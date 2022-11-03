@@ -1,0 +1,45 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'net.foulest'
+version = '1.0.0'
+description = 'Athena'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+configurations {
+    provided
+    implementation.extendsFrom(provided)
+}
+
+dependencies {
+    provided group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.13.4.1'
+    provided group: 'org.apache.commons', name: 'commons-csv', version: '1.9.0'
+    provided group: 'com.diogonunes', name: 'JColor', version: '5.0.1'
+    provided group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
+    implementation group: 'org.projectlombok', name: 'lombok', version: '1.18.24'
+    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.24'
+}
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+
+    manifest {
+        attributes 'Main-Class': 'net.foulest.athena.Athena'
+    }
+
+    from {
+        configurations.provided.asFileTree.files.collect {
+            zipTree(it)
+        }
+    }
+}
