@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @Getter
 @Setter
@@ -25,7 +26,7 @@ public class RedirectableRequest {
     private int readTimeout = 10000;
 
     public RedirectableRequest(URL request, int protocolRedirectLimit) {
-        this.request = request;
+        this.request = Objects.requireNonNull(request, "Request URL cannot be null");
         this.protocolRedirectLimit = protocolRedirectLimit;
     }
 
@@ -45,9 +46,8 @@ public class RedirectableRequest {
                 connection.setConnectTimeout(connectTimeout);
                 connection.setReadTimeout(readTimeout);
 
-                for (String requestProperty : requestProperties.keySet()) {
-                    connection.addRequestProperty(requestProperty, requestProperties.get(requestProperty));
-                }
+                HttpURLConnection finalConnection = connection;
+                requestProperties.forEach(finalConnection::addRequestProperty);
 
                 connection.setInstanceFollowRedirects(true);
 

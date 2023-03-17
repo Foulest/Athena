@@ -21,7 +21,7 @@ public class Stock {
     private String marketState;
 
     private Double averageMargins;
-    private Double antiDebtRatio;
+    private Double cashToDebtRatio;
     private Double open;
     private Double previousClose;
     private Double dayLow;
@@ -116,8 +116,8 @@ public class Stock {
     private Long lastSplitDate;
     private Double enterpriseToRevenue;
     private Double enterpriseToEbitda;
-    private Double change52Weeks; // 52WeekChange
-    private Double change52WeeksSP500; // SandP52WeekChange
+    private Double change52Weeks;
+    private Double change52WeeksSP500;
 
     private String shortName;
     private String name;

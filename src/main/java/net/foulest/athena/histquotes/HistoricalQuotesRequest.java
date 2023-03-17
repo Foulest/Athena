@@ -30,10 +30,8 @@ public class HistoricalQuotesRequest {
     public final QueryInterval interval;
 
     public List<HistoricalQuote> getResult() throws IOException {
-        List<HistoricalQuote> result = new ArrayList<>();
-
         if (from.after(to)) {
-            return result;
+            return Collections.emptyList();
         }
 
         Map<String, String> params = new LinkedHashMap<>();
@@ -41,27 +39,28 @@ public class HistoricalQuotesRequest {
         params.put("period2", String.valueOf(to.getTimeInMillis() / 1000));
         params.put("interval", interval.getTag());
 
-        String url = "https://query1.finance.yahoo.com/v7/finance/download/" + URLEncoder.encode(symbol, StandardCharsets.UTF_8) + "?" + Utils.getURLParameters(params);
-        URL request = new URL(url);
+        String urlBuilder = "https://query1.finance.yahoo.com/v7/finance/download/"
+                + URLEncoder.encode(symbol, StandardCharsets.UTF_8) + "?" + Utils.getURLParameters(params);
+
+        URL request = new URL(urlBuilder);
         RedirectableRequest redirectableRequest = new RedirectableRequest(request, 5);
         redirectableRequest.setConnectTimeout(10000);
         redirectableRequest.setReadTimeout(10000);
 
-        try {
-            URLConnection connection = redirectableRequest.openConnection();
-            InputStreamReader is = new InputStreamReader(connection.getInputStream());
-            BufferedReader br = new BufferedReader(is);
+        URLConnection connection = redirectableRequest.openConnection();
+        try (InputStreamReader is = new InputStreamReader(connection.getInputStream());
+             BufferedReader br = new BufferedReader(is)) {
+
             br.readLine();
+            List<HistoricalQuote> result = new ArrayList<>(365); // Approximation of daily quotes in a year
 
             for (String line = br.readLine(); line != null; line = br.readLine()) {
                 HistoricalQuote quote = parseCSVLine(line);
                 result.add(quote);
             }
 
-        } catch (FileNotFoundException ignored) {
+            return result;
         }
-
-        return result;
     }
 
     private HistoricalQuote parseCSVLine(String line) {

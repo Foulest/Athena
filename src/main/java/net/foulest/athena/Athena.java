@@ -6,15 +6,18 @@ import net.foulest.athena.histquotes.HistoricalQuote;
 import net.foulest.athena.histquotes.QueryInterval;
 import net.foulest.athena.stock.Stock;
 import net.foulest.athena.stock.StockData;
+import net.foulest.athena.util.ColorCondition;
+import net.foulest.athena.util.ConditionMessagePair;
+import net.foulest.athena.util.Utils;
 
 import java.io.*;
-import java.math.BigDecimal;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.List;
-import java.util.Scanner;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static net.foulest.athena.util.Utils.*;
 
@@ -24,6 +27,11 @@ public class Athena {
     public static Calendar to = Calendar.getInstance();
     public static List<String> goodStocks = new ArrayList<>();
 
+    /**
+     * The main method.
+     *
+     * @param args The command line arguments.
+     */
     public static void main(String[] args) {
         from.add(Calendar.YEAR, -5);
 
@@ -34,7 +42,7 @@ public class Athena {
 
         System.out.print(Ansi.colorize("Enter a stock name or file path: ", Attribute.BOLD()));
         Scanner scanner = new Scanner(System.in);
-        String input = (scanner.nextLine()).trim();
+        String input = scanner.nextLine().trim();
 
         // Ignores empty inputs.
         if (input.isEmpty()) {
@@ -42,624 +50,467 @@ public class Athena {
             return;
         }
 
-        // If input contains file extension characters, process as file.
-        if (input.contains(".") || input.contains("\\") || input.contains("/")) {
-            File file = new File(input);
+        processInput(input);
+    }
+
+    /**
+     * Checks a list of stock symbols for good stocks.
+     *
+     * @param input The list of stock symbols.
+     */
+    private static void processInput(String input) {
+        if (isFilePath(input)) {
+            processFile(input);
+        } else if (input.equalsIgnoreCase("NASDAQ")) {
+            processNASDAQ();
+        } else {
+            checkStockSymbols(() -> Stream.of(input));
+        }
+    }
+
+    /**
+     * Checks a file of stock symbols for good stocks.
+     *
+     * @param filePath The path to the file.
+     */
+    private static void processFile(String filePath) {
+        System.out.println();
+
+        checkStockSymbols(() -> {
+            File file = new File(filePath);
 
             try {
-                System.out.println();
-                checkStockSymbolFile(file);
-            } catch (FileNotFoundException ignored) {
-                System.out.println(Ansi.colorize("File '" + file.getPath() + "' not found.", Attribute.RED_TEXT()));
+                return Files.lines(file.toPath());
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new UncheckedIOException(e);
             }
-
-        } else if (input.equalsIgnoreCase("NASDAQ")) {
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-            InputStream is = classLoader.getResourceAsStream("nasdaq.txt");
-
-            if (is == null) {
-                System.out.println(Ansi.colorize("NASDAQ file not found.", Attribute.RED_TEXT()));
-                return;
-            }
-
-            System.out.println();
-            checkStockSymbolStream(is);
-
-        } else {
-            System.out.println();
-            checkStockSymbol(input);
-        }
+        });
     }
 
-    public static void checkStockSymbolStream(InputStream stream) {
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(stream))) {
-            String symbol;
+    /**
+     * Checks the NASDAQ stock symbols for good stocks.
+     */
+    private static void processNASDAQ() {
+        InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream("nasdaq.txt");
 
-            while ((symbol = br.readLine()) != null) {
+        if (is == null) {
+            System.out.println(Ansi.colorize("NASDAQ file not found.", Attribute.RED_TEXT()));
+            return;
+        }
+
+        System.out.println();
+        checkStockSymbols(() -> new BufferedReader(new InputStreamReader(is)).lines());
+    }
+
+    /**
+     * Checks a list of stock symbols for good stocks.
+     *
+     * @param symbolSupplier A supplier of a stream of stock symbols.
+     */
+    public static void checkStockSymbols(Supplier<Stream<String>> symbolSupplier) {
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        List<Future<Stock>> futures = new ArrayList<>();
+
+        try (Stream<String> symbols = symbolSupplier.get()) {
+            symbols.forEach(symbol -> {
                 if (!symbol.isEmpty() && !symbol.contains("/")) {
-                    Stock stock = StockData.getStockData(symbol);
-                    analyzeStock(stock, stock.getHistory(from, to, QueryInterval.DAILY));
+                    futures.add(executor.submit(() -> {
+                        Stock stock = StockData.getStockData(symbol);
+                        analyzeStock(stock, stock.getHistory(from, to, QueryInterval.DAILY));
+                        return stock;
+                    }));
                 }
-            }
-
+            });
         } catch (Exception ex) {
             ex.printStackTrace();
         }
 
+        List<Stock> goodStocks = futures.stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        e.printStackTrace();
+                    }
+                    return null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        executor.shutdown();
         System.out.println(goodStocks);
     }
 
-    public static void checkStockSymbolFile(File file) throws IOException {
-        InputStream stream = Files.newInputStream(file.toPath());
-
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(stream))) {
-            String symbol;
-
-            while ((symbol = br.readLine()) != null) {
-                if (!symbol.isEmpty() && !symbol.contains("/")) {
-                    Stock stock = StockData.getStockData(symbol);
-                    analyzeStock(stock, stock.getHistory(from, to, QueryInterval.DAILY));
-                }
-            }
-
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        }
-
-        System.out.println(goodStocks);
-    }
-
-    public static void checkStockSymbol(String symbol) {
-        try {
-            Stock stock = StockData.getStockData(symbol);
-            analyzeStock(stock, stock.getHistory(from, to, QueryInterval.DAILY));
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        }
-
-        System.out.println(goodStocks);
-    }
-
+    /**
+     * Analyzes a stock's data and prints out the results.
+     *
+     * @param stock        The stock to analyze.
+     * @param stockHistory The stock's price history.
+     */
     private static void analyzeStock(Stock stock, List<HistoricalQuote> stockHistory) {
         boolean warning = false;
 
         try {
-            List<Double> stockOpens = new ArrayList<>();
-            List<Double> stockCloses = new ArrayList<>();
-
-            // Filters out stocks that have zero price information.
             if (stockHistory.isEmpty()) {
                 printStockError(stock);
                 TimeUnit.MILLISECONDS.sleep(2500);
                 return;
             }
 
-            // Grabs the stock price history.
+            double[] stockOpens = new double[stockHistory.size()];
+            double[] stockCloses = new double[stockHistory.size()];
+
+            int idx = 0;
             for (HistoricalQuote quote : stockHistory) {
-                // Filters out stocks that have invalid opening prices.
                 if (quote.getOpen() == null) {
                     printStockError(stock);
                     TimeUnit.MILLISECONDS.sleep(2500);
                     return;
                 }
 
-                stockOpens.add(formatDouble(quote.getOpen().doubleValue()));
-                stockCloses.add(formatDouble(quote.getAdjClose().doubleValue()));
+                stockOpens[idx] = formatDouble(quote.getOpen().doubleValue());
+                stockCloses[idx] = formatDouble(quote.getAdjClose().doubleValue());
+                idx++;
             }
 
-            // Filters out stocks that have missing data.
-            if (stock.getTotalDebt() == null || stock.getEbitda() == null || stock.getBookValue() == null
-                    || stockOpens.size() < 253 || stock.getCurrentRatio() == null || stock.getDebtToEquity() == null
-                    || stock.getPriceToBook() == null || stock.getOperatingCashflow() == null
-                    || stock.getRevenueGrowth() == null) {
-                printStockError(stock);
-                TimeUnit.MILLISECONDS.sleep(2500);
-                return;
-            }
-
-            // Calculates the stock's market changes.
-            double change1d = formatDouble(((stock.getClose() - stockOpens.get(stockOpens.size() - 1)) / stockOpens.get(stockOpens.size() - 1)) * 100);
-            double change5d = formatDouble(((stock.getClose() - stockOpens.get(stockOpens.size() - 5)) / stockOpens.get(stockOpens.size() - 5)) * 100);
-            double change1m = formatDouble(((stock.getClose() - stockCloses.get(stockCloses.size() - 21)) / stockCloses.get(stockCloses.size() - 22)) * 100);
-            double change6m = formatDouble(((stock.getClose() - stockCloses.get(stockCloses.size() - 124)) / stockCloses.get(stockCloses.size() - 124)) * 100);
-            double change12m = formatDouble((stock.getClose() - stockCloses.get(stockCloses.size() - 253)) / stockCloses.get(stockCloses.size() - 253) * 100);
+            // Calculate the stock's market changes directly while iterating over the stock history
+            double change1d = formatDouble(((stock.getClose() - stockOpens[stockOpens.length - 1]) / stockOpens[stockOpens.length - 1]) * 100);
+            double change5d = formatDouble(((stock.getClose() - stockOpens[stockOpens.length - 5]) / stockOpens[stockOpens.length - 5]) * 100);
+            double change1m = formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 21]) / stockCloses[stockCloses.length - 22]) * 100);
+            double change6m = formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 124]) / stockCloses[stockCloses.length - 124]) * 100);
+            double change12m = formatDouble((stock.getClose() - stockCloses[stockCloses.length - 253]) / stockCloses[stockCloses.length - 253] * 100);
 
             // Stock Header
+            System.out.println();
             System.out.println(Ansi.colorize("[" + stock.getSymbol(), Attribute.BOLD())
                     + Ansi.colorize(" " + stock.getCurrencySymbol() + stock.getClose(), Attribute.SATURATED())
                     + Ansi.colorize("]", Attribute.BOLD()));
 
-            // Name
-            System.out.println();
-            System.out.println(Ansi.colorize("Name: ", Attribute.BOLD()) + stock.getName());
+            printColoredStockValue("Name", stock.getName(), Attribute.CLEAR(), Collections.emptyList());
+            printColoredStockValue("Industry", stock.getIndustry(), Attribute.CLEAR(), Collections.emptyList());
+            printColoredStockValue("Sector", stock.getSector(), Attribute.CLEAR(), Collections.emptyList());
 
-            // Industry
-            if (stock.getIndustry() != null) {
-                System.out.println(Ansi.colorize("Industry: ", Attribute.BOLD()) + stock.getIndustry());
-            }
+            printColoredStockValue("Full Time Employees", stock.getFullTimeEmployees(), Collections.emptyList(),
+                    v -> String.format("%,d", stock.getFullTimeEmployees()), Attribute.CLEAR());
 
-            // Sector
-            if (stock.getSector() != null) {
-                System.out.println(Ansi.colorize("Sector: ", Attribute.BOLD()) + stock.getSector());
-            }
-
-            // Full Time Employees
-            if (stock.getFullTimeEmployees() != null) {
-                System.out.println(Ansi.colorize("Full Time Employees: ", Attribute.BOLD())
-                        + String.format("%,d", new BigDecimal(stock.getFullTimeEmployees()).toBigInteger()));
-            }
-
-            // Market Cap
-            if (stock.getMarketCap() != null) {
-                System.out.println(Ansi.colorize("Market Cap: ", Attribute.BOLD())
-                        + formatInteger(stock.getMarketCap()));
-            }
-
-            // Enterprise Value
-            if (stock.getEnterpriseValue() != null) {
-                System.out.println(Ansi.colorize("Enterprise Value: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getEnterpriseValue()), getColorBasic(stock.getEnterpriseValue())));
-            }
-
-            // Analyst Rating
-            if (stock.getAnalystRating() != null) {
-                System.out.println(Ansi.colorize("Analyst Rating: ", Attribute.BOLD())
-                                + stock.getAnalystRating()
-                        /*                        + Ansi.colorize(stock.getAnalystRating(), getColorAnalyst(stock.getAnalystRating()))*/);
-            }
-
-            // Analyst Score
-            if (stock.getAnalystScore() != null) {
-                System.out.println(Ansi.colorize("Analyst Score: ", Attribute.BOLD())
-                        + Ansi.colorize(String.valueOf(stock.getAnalystScore()), Attribute.BOLD()));
-            }
-
-            // Analyst Count
-            if (stock.getAnalystScore() != null) {
-                System.out.println(Ansi.colorize("Analyst Count: ", Attribute.BOLD())
-                        + Ansi.colorize(String.valueOf(stock.getAnalystCount()), Attribute.BOLD()));
-            }
+            printColoredStockValue("Average Volume", stock.getAverageVolume10Days(), Collections.emptyList(),
+                    Utils::formatInteger, Attribute.CLEAR());
 
             System.out.println();
 
-            // Free Cashflow
-            if (stock.getFreeCashflow() != null) {
-                System.out.println(Ansi.colorize("Free Cashflow: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getFreeCashflow()), getColorBasic(stock.getFreeCashflow())));
-            }
+            printColoredStockValue("Market Cap", stock.getMarketCap(), List.of(
+                    new ColorCondition(stock.getMarketCap() > 0.0, Attribute.GREEN_TEXT(), Attribute.BOLD())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            // Operating Cashflow
-            if (stock.getOperatingCashflow() != null) {
-                System.out.println(Ansi.colorize("Operating Cashflow: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getOperatingCashflow()), getColorBasic(stock.getOperatingCashflow())));
-            }
+            printColoredStockValue("Enterprise Value", stock.getEnterpriseValue(), List.of(
+                    new ColorCondition(stock.getEnterpriseValue() > 0.0, Attribute.GREEN_TEXT(), Attribute.BOLD())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            // Total Cash
-            if (stock.getTotalCash() != null) {
-                System.out.println(Ansi.colorize("Total Cash: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getTotalCash()), getColorBasic(stock.getTotalCash()))
-                        + Ansi.colorize(" (Per Share: $" + formatDouble(stock.getTotalCashPerShare()) + ")", Attribute.ITALIC()));
-            }
+            Function<Double, String> analystScoreFormatter = v -> {
+                if (v >= 1.0 && v <= 1.9) {
+                    return v + " (Strong Buy)";
+                } else if (v >= 2.0 && v <= 2.4) {
+                    return v + " (Buy)";
+                } else if (v >= 2.5 && v <= 2.9) {
+                    return v + " (Hold)";
+                } else if (v >= 3.0 && v <= 3.4) {
+                    return v + " (Sell)";
+                } else if (v >= 3.5) {
+                    return v + " (Strong Sell)";
+                }
+                return "";
+            };
 
-            // Total Debt
-            if (stock.getTotalDebt() != null) {
-                System.out.println(Ansi.colorize("Total Debt: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getTotalDebt()), Attribute.RED_TEXT())
-                        + Ansi.colorize(" (D/E Ratio: ", Attribute.ITALIC())
-                        + Ansi.colorize(String.valueOf(formatDouble(stock.getDebtToEquity())), getColorDebtToEquity(stock.getDebtToEquity()), Attribute.ITALIC())
-                        + Ansi.colorize(")", Attribute.ITALIC()));
-            }
+            printColoredStockValue("Analyst Score", stock.getAnalystScore(), Arrays.asList(
+                    new ColorCondition(stock.getAnalystScore() >= 1.0 && stock.getAnalystScore() <= 1.9, Attribute.BOLD(), Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getAnalystScore() >= 2.0 && stock.getAnalystScore() <= 2.4, Attribute.BOLD(), Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getAnalystScore() >= 2.5 && stock.getAnalystScore() <= 2.9, Attribute.BOLD(), Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getAnalystScore() >= 3.0 && stock.getAnalystScore() <= 3.4, Attribute.BOLD(), Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getAnalystScore() >= 3.5, Attribute.BOLD(), Attribute.RED_TEXT())
+            ), analystScoreFormatter, Attribute.CLEAR());
 
-            // Total Revenue
-            if (stock.getTotalRevenue() != null) {
-                System.out.println(Ansi.colorize("Total Revenue: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getTotalRevenue()), getColorBasic(stock.getTotalRevenue()))
-                        + Ansi.colorize(" (Per Share: $" + formatDouble(stock.getRevenuePerShare()) + ")", Attribute.ITALIC()));
-            }
+            printColoredStockValue("Total Cash Per Share", stock.getTotalCashPerShare(), List.of(
+                    new ColorCondition(stock.getTotalCashPerShare() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatDouble(v), Attribute.RED_TEXT());
 
-            // Gross Profits
-            if (stock.getGrossProfits() != null) {
-                System.out.println(Ansi.colorize("Gross Profits: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getGrossProfits()), getColorBasic(stock.getGrossProfits())));
-            }
-
-            // EBITDA
-            if (stock.getEbitda() != null) {
-                System.out.println(Ansi.colorize("EBITDA: ", Attribute.BOLD())
-                        + Ansi.colorize("$" + formatInteger(stock.getEbitda()), getColorBasic(stock.getEbitda())));
-            }
-
-            // Beta
-            if (stock.getBeta() != null) {
-                System.out.println(Ansi.colorize("Beta: ", Attribute.BOLD())
-                        + Ansi.colorize(String.valueOf(formatDouble(stock.getBeta())), getColorBeta(stock.getBeta()))
-                        + Ansi.colorize(" (Avg Volume: " + formatInteger(stock.getAverageVolume10Days()) + ")", Attribute.ITALIC()));
-            }
+            printColoredStockValue("Revenue Per Share", stock.getRevenuePerShare(), List.of(
+                    new ColorCondition(stock.getRevenuePerShare() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatDouble(v), Attribute.RED_TEXT());
 
             System.out.println();
 
-            /* Change (1 Day) */
-            {
-                System.out.print(Ansi.colorize("Change (1 Day): ", Attribute.BOLD()));
+            printColoredStockValue("Free Cashflow", stock.getFreeCashflow(), List.of(
+                    new ColorCondition(stock.getFreeCashflow() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-                if (change1d >= 20.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
+            printColoredStockValue("Operating Cashflow", stock.getOperatingCashflow(), List.of(
+                    new ColorCondition(stock.getOperatingCashflow() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-                } else if (change1d >= 15.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
+            printColoredStockValue("Total Cash", stock.getTotalCash(), List.of(
+                    new ColorCondition(stock.getTotalCash() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-                } else if (change1d >= 10.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.BRIGHT_GREEN_TEXT()));
+            printColoredStockValue("Total Debt", stock.getTotalDebt(), Collections.emptyList()
+                    , v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-                } else if (change1d >= 5.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.GREEN_TEXT()));
+            printColoredStockValue("Total Revenue", stock.getTotalRevenue(), List.of(
+                    new ColorCondition(stock.getTotalRevenue() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-                } else if (change1d > 0.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.YELLOW_TEXT()));
+            printColoredStockValue("Gross Profits", stock.getGrossProfits(), List.of(
+                    new ColorCondition(stock.getGrossProfits() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-                } else if (change1d > -10.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.RED_TEXT()));
-
-                } else if (change1d >= -15.0) {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(change1d + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
-
-            /* Change (1 Week) */
-            {
-                System.out.print(Ansi.colorize("Change (5 Days): ", Attribute.BOLD()));
-
-                if (change5d >= 20.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change5d >= 15.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change5d >= 10.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.BRIGHT_GREEN_TEXT()));
-
-                } else if (change5d >= 5.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.GREEN_TEXT()));
-
-                } else if (change5d > 0.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.YELLOW_TEXT()));
-
-                } else if (change5d > -10.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.RED_TEXT()));
-
-                } else if (change5d >= -15.0) {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(change5d + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
-
-            /* Change (1 Month) */
-            {
-                System.out.print(Ansi.colorize("Change (1 Month): ", Attribute.BOLD()));
-
-                if (change1m >= 20.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change1m >= 15.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change1m >= 10.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.BRIGHT_GREEN_TEXT()));
-
-                } else if (change1m >= 5.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.GREEN_TEXT()));
-
-                } else if (change1m > 0.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.YELLOW_TEXT()));
-
-                } else if (change1m > -10.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.RED_TEXT()));
-
-                } else if (change1m >= -15.0) {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(change1m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
-
-            /* Change (6 Month) */
-            {
-                System.out.print(Ansi.colorize("Change (6 Month): ", Attribute.BOLD()));
-
-                if (change6m >= 20.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change6m >= 15.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change6m >= 10.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.BRIGHT_GREEN_TEXT()));
-
-                } else if (change6m >= 5.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.GREEN_TEXT()));
-
-                } else if (change6m > 0.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.YELLOW_TEXT()));
-
-                } else if (change6m > -10.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.RED_TEXT()));
-
-                } else if (change6m >= -15.0) {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(change6m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
-
-            /* Change (1 Year) */
-            {
-                System.out.print(Ansi.colorize("Change (1 Year): ", Attribute.BOLD()));
-
-                if (change12m >= 20.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change12m >= 15.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (change12m >= 10.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.BRIGHT_GREEN_TEXT()));
-
-                } else if (change12m >= 5.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.GREEN_TEXT()));
-
-                } else if (change12m > 0.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.YELLOW_TEXT()));
-
-                } else if (change12m > -10.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.RED_TEXT()));
-
-                } else if (change12m >= -15.0) {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(change12m + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
+            printColoredStockValue("EBITDA", stock.getEbitda(), List.of(
+                    new ColorCondition(stock.getEbitda() > 0.0, Attribute.GREEN_TEXT())
+            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
             System.out.println();
 
-            // Anti-Debt Ratio
-            if (stock.getQuickRatio() != null && stock.getCurrentRatio() != null) {
-                stock.setAntiDebtRatio(formatDouble((stock.getQuickRatio() + stock.getCurrentRatio()) / 2));
-                System.out.print(Ansi.colorize("Anti-Debt Ratio: ", Attribute.BOLD()));
+            printChange("Change (1 Day)", change1d);
+            printChange("Change (5 Days)", change5d);
+            printChange("Change (1 Month)", change1m);
+            printChange("Change (6 Month)", change6m);
+            printChange("Change (1 Year)", change12m);
 
-                if (stock.getAntiDebtRatio() >= 3.0) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
+            System.out.println();
 
-                } else if (stock.getAntiDebtRatio() >= 2.0) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.BLACK_TEXT(), Attribute.GREEN_BACK()));
+            printColoredStockValue("Revenue Growth", stock.getRevenueGrowth() * 100, Arrays.asList(
+                    new ColorCondition(stock.getRevenueGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getRevenueGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getRevenueGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
-                } else if (stock.getAntiDebtRatio() >= 1.2) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.GREEN_TEXT()));
+            printColoredStockValue("Earnings Growth", stock.getEarningsGrowth() * 100, Arrays.asList(
+                    new ColorCondition(stock.getEarningsGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getEarningsGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getEarningsGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
-                } else if (stock.getAntiDebtRatio() >= 1.0) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.BRIGHT_YELLOW_TEXT()));
+            printColoredStockValue("Earnings Quarterly Growth", stock.getEarningsQuarterlyGrowth() * 100, Arrays.asList(
+                    new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
-                } else if (stock.getAntiDebtRatio() >= 0.9) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.RED_TEXT()));
+            System.out.println();
 
-                } else if (stock.getAntiDebtRatio() >= 0.85) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
+            printColoredStockValue("Beta", stock.getBeta(), Arrays.asList(
+                    new ColorCondition(stock.getBeta() >= 1.1, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getBeta() >= 0.9, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getBeta() >= 0.8, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
 
-                } else if (stock.getAntiDebtRatio() < 0.85) {
-                    System.out.println(Ansi.colorize(String.valueOf(stock.getAntiDebtRatio()), Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
+//            printColoredStockValue("Current Ratio", stock.getCurrentRatio(), Arrays.asList(
+//                    new ColorCondition(stock.getCurrentRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
+//                    new ColorCondition(stock.getCurrentRatio() >= 2.0, Attribute.GREEN_TEXT()),
+//                    new ColorCondition(stock.getCurrentRatio() >= 1.0, Attribute.YELLOW_TEXT())
+//            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+
+            printColoredStockValue("Forward PE", stock.getForwardPE(), Arrays.asList(
+                    new ColorCondition(stock.getForwardPE() >= 20.0, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getForwardPE() >= 10.0, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getForwardPE() >= 5.0, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
+
+            printColoredStockValue("PEG Ratio", stock.getPegRatio(), Arrays.asList(
+                    new ColorCondition(stock.getPegRatio() >= 3.0, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getPegRatio() >= 2.0, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getPegRatio() >= 1.0, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
+
+            printColoredStockValue("Debt-to-Equity Ratio", stock.getDebtToEquity() / 100, Arrays.asList(
+                    new ColorCondition(stock.getDebtToEquity() / 100 > 2.0, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getDebtToEquity() / 100 >= 1.0, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getDebtToEquity() / 100 >= 0.5, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
+
+//            printColoredStockValue("Quick Ratio", stock.getQuickRatio(), Arrays.asList(
+//                    new ColorCondition(stock.getQuickRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
+//                    new ColorCondition(stock.getQuickRatio() >= 1.5, Attribute.GREEN_TEXT()),
+//                    new ColorCondition(stock.getQuickRatio() >= 1.0, Attribute.YELLOW_TEXT())
+//            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+
+            if (stock.getCurrentRatio() != null && stock.getQuickRatio() != null) {
+                stock.setCashToDebtRatio((stock.getCurrentRatio() + stock.getQuickRatio()) / 2);
+
+                printColoredStockValue("Cash-to-Debt Ratio", stock.getCashToDebtRatio(), Arrays.asList(
+                        new ColorCondition(stock.getCashToDebtRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
+                        new ColorCondition(stock.getCashToDebtRatio() >= 1.5, Attribute.GREEN_TEXT()),
+                        new ColorCondition(stock.getCashToDebtRatio() >= 1.0, Attribute.YELLOW_TEXT())
+                ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
             }
 
-            // Average Margins
-            if (stock.getProfitMargins() != null && stock.getGrossMargins() != null
-                    && stock.getEbitdaMargins() != null && stock.getOperatingMargins() != null) {
-                stock.setProfitMargins(formatDouble(stock.getProfitMargins() * 100));
-                stock.setGrossMargins(formatDouble(stock.getGrossMargins() * 100));
-                stock.setEbitdaMargins(formatDouble(stock.getEbitdaMargins() * 100));
-                stock.setOperatingMargins(formatDouble(stock.getOperatingMargins() * 100));
-                stock.setAverageMargins(formatDouble((stock.getProfitMargins() + stock.getGrossMargins()
-                        + stock.getEbitdaMargins() + stock.getOperatingMargins()) / 4));
-                System.out.print(Ansi.colorize("Average Margins: ", Attribute.BOLD()));
+            printColoredStockValue("Enterprise Value to EBITDA", stock.getEnterpriseToEbitda(), Arrays.asList(
+                    new ColorCondition(stock.getEnterpriseToEbitda() >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getEnterpriseToEbitda() >= 10.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getEnterpriseToEbitda() >= 5.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                if (stock.getAverageMargins() >= 50.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
+            printColoredStockValue("Enterprise Value to Revenue", stock.getEnterpriseToRevenue(), Arrays.asList(
+                    new ColorCondition(stock.getEnterpriseToRevenue() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getEnterpriseToRevenue() >= 1.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getEnterpriseToRevenue() >= 0.5, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getAverageMargins() >= 30.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.BLACK_TEXT(), Attribute.GREEN_BACK()));
+            System.out.println();
 
-                } else if (stock.getAverageMargins() >= 20.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.BRIGHT_GREEN_TEXT()));
+            printColoredStockValue("EBITDA Margins", stock.getEbitdaMargins() * 100, Arrays.asList(
+                    new ColorCondition(stock.getEbitdaMargins() * 100 >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getEbitdaMargins() * 100 >= 10.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getEbitdaMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getAverageMargins() >= 10.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.GREEN_TEXT()));
+            printColoredStockValue("Gross Margins", stock.getGrossMargins() * 100, Arrays.asList(
+                    new ColorCondition(stock.getGrossMargins() * 100 >= 60.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getGrossMargins() * 100 >= 40.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getGrossMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getAverageMargins() > 0.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.BRIGHT_YELLOW_TEXT()));
+            printColoredStockValue("Operating Margins", stock.getOperatingMargins() * 100, Arrays.asList(
+                    new ColorCondition(stock.getOperatingMargins() * 100 >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getOperatingMargins() * 100 >= 10.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getOperatingMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getAverageMargins() >= -5.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.RED_TEXT()));
+            printColoredStockValue("Profit Margins", stock.getProfitMargins() * 100, Arrays.asList(
+                    new ColorCondition(stock.getProfitMargins() * 100 >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getProfitMargins() * 100 >= 10.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getProfitMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getAverageMargins() >= -10.0) {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
+            printColoredStockValue("Return on Assets", stock.getReturnOnAssets() * 100, Arrays.asList(
+                    new ColorCondition(stock.getReturnOnAssets() * 100 > 6.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getReturnOnAssets() * 100 >= 3.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getReturnOnAssets() * 100 >= 1.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else {
-                    System.out.println(Ansi.colorize(stock.getAverageMargins() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
+            printColoredStockValue("Return on Equity", stock.getReturnOnEquity() * 100, Arrays.asList(
+                    new ColorCondition(stock.getReturnOnEquity() * 100 > 20.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getReturnOnEquity() * 100 >= 15.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getReturnOnEquity() * 100 >= 10.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-            // Return On Assets
-            if (stock.getReturnOnAssets() != null) {
-                stock.setReturnOnAssets(formatDouble(stock.getReturnOnAssets() * 100));
-                System.out.print(Ansi.colorize("Return On Assets: ", Attribute.BOLD()));
+            System.out.println();
 
-                if (stock.getReturnOnAssets() >= 50.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
+            printColoredStockValue("Book Value", stock.getBookValue(), Arrays.asList(
+                    new ColorCondition(stock.getBookValue() >= 1.5, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getBookValue() >= 1.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getBookValue() >= 0.75, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getReturnOnAssets() >= 30.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.BLACK_TEXT(), Attribute.GREEN_BACK()));
+            printColoredStockValue("Price to Book", stock.getPriceToBook(), Arrays.asList(
+                    new ColorCondition(stock.getPriceToBook() >= 3.0, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getPriceToBook() >= 2.0, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getPriceToBook() >= 1.0, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
 
-                } else if (stock.getReturnOnAssets() >= 20.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.BRIGHT_GREEN_TEXT()));
+            printColoredStockValue("Forward EPS", stock.getForwardEPS(), Arrays.asList(
+                    new ColorCondition(stock.getForwardEPS() >= 2.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getForwardEPS() >= 1.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getForwardEPS() >= 0.5, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-                } else if (stock.getReturnOnAssets() >= 10.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.GREEN_TEXT()));
-
-                } else if (stock.getReturnOnAssets() > 0.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.BRIGHT_YELLOW_TEXT()));
-
-                } else if (stock.getReturnOnAssets() >= -5.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.RED_TEXT()));
-
-                } else if (stock.getReturnOnAssets() >= -10.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(stock.getReturnOnAssets() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
-
-            // Return On Equity
-            if (stock.getReturnOnEquity() != null) {
-                stock.setReturnOnEquity(formatDouble(stock.getReturnOnEquity() * 100));
-                System.out.print(Ansi.colorize("Return On Equity: ", Attribute.BOLD()));
-
-                if (stock.getReturnOnEquity() >= 50.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (stock.getReturnOnEquity() >= 30.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.BLACK_TEXT(), Attribute.GREEN_BACK()));
-
-                } else if (stock.getReturnOnEquity() >= 20.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.BRIGHT_GREEN_TEXT()));
-
-                } else if (stock.getReturnOnEquity() >= 10.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.GREEN_TEXT()));
-
-                } else if (stock.getReturnOnEquity() > 0.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.BRIGHT_YELLOW_TEXT()));
-
-                } else if (stock.getReturnOnEquity() >= -5.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.RED_TEXT()));
-
-                } else if (stock.getReturnOnEquity() >= -10.0) {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(stock.getReturnOnEquity() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
-
-            // Revenue Growth
-            if (stock.getRevenueGrowth() != null) {
-                stock.setRevenueGrowth(formatDouble(stock.getRevenueGrowth() * 100));
-                System.out.print(Ansi.colorize("Revenue Growth: ", Attribute.BOLD()));
-
-                if (stock.getRevenueGrowth() >= 50.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()));
-
-                } else if (stock.getRevenueGrowth() >= 30.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.BLACK_TEXT(), Attribute.GREEN_BACK()));
-
-                } else if (stock.getRevenueGrowth() >= 20.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.BRIGHT_GREEN_TEXT()));
-
-                } else if (stock.getRevenueGrowth() >= 10.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.GREEN_TEXT()));
-
-                } else if (stock.getRevenueGrowth() > 0.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.BRIGHT_YELLOW_TEXT()));
-
-                } else if (stock.getRevenueGrowth() >= -5.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.RED_TEXT()));
-
-                } else if (stock.getRevenueGrowth() >= -10.0) {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.BLACK_TEXT(), Attribute.RED_BACK()));
-
-                } else {
-                    System.out.println(Ansi.colorize(stock.getRevenueGrowth() + "%", Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK()));
-                }
-            }
+            printColoredStockValue("Trailing EPS", stock.getTrailingEPS(), Arrays.asList(
+                    new ColorCondition(stock.getTrailingEPS() >= 2.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getTrailingEPS() >= 1.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getTrailingEPS() >= 0.5, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
             // Prints a Google link to the stock for more information.
             System.out.println();
             System.out.println(Ansi.colorize("https://google.com/search?q=" + stock.getSymbol() + "+stock", Attribute.CYAN_TEXT()));
             System.out.println();
 
-            if (stock.getAntiDebtRatio() < 0.85) {
-                double grossProfits = BigDecimal.valueOf(stock.getGrossProfits()).doubleValue();
-                double totalDebt = BigDecimal.valueOf(stock.getTotalDebt()).doubleValue();
+            // The list of conditions that merit a warning.
+            List<ConditionMessagePair> conditions = Arrays.asList(
+                    new ConditionMessagePair(stock.getFreeCashflow() < 0, "has negative free cash flow."),
+                    new ConditionMessagePair(stock.getOperatingCashflow() < 0, "has negative operating cash flow."),
+                    new ConditionMessagePair(stock.getEbitda() < 0, "has negative EBITDA."),
+                    new ConditionMessagePair(stock.getTotalCash() < 0, "has negative total cash."),
+                    new ConditionMessagePair(stock.getTotalRevenue() < 0, "has negative total revenue."),
+                    new ConditionMessagePair(stock.getGrossProfits() < 0, "has negative gross profits."),
+                    new ConditionMessagePair(stock.getCashToDebtRatio() < 1, "has a debt to cash ratio less than 1."),
+                    new ConditionMessagePair(stock.getDebtToEquity() / 100 > 2.0, "has a debt to equity ratio greater than 2.0."),
+                    new ConditionMessagePair(stock.getForwardEPS() < 0.5, "has a forward EPS less than 0.5."),
+                    new ConditionMessagePair(stock.getTrailingEPS() < 0.5, "has a trailing EPS less than 0.5."),
+                    new ConditionMessagePair(stock.getEbitdaMargins() < 0, "has negative EBITDA margins."),
+                    new ConditionMessagePair(stock.getOperatingMargins() < 0, "has negative operating margins."),
+                    new ConditionMessagePair(stock.getGrossMargins() < 0, "has negative gross margins."),
+                    new ConditionMessagePair(stock.getProfitMargins() < 0, "has negative profit margins."),
+                    new ConditionMessagePair(stock.getReturnOnAssets() < 0, "has negative return on assets."),
+                    new ConditionMessagePair(stock.getReturnOnEquity() < 0, "has negative return on equity.")
+            );
 
-                if (grossProfits < totalDebt) {
+            String stockNameMessage = "This stock, " + stock.getName() + ", ";
+
+            for (ConditionMessagePair pair : conditions) {
+                if (pair.condition) {
                     warning = true;
-                    System.out.println(Ansi.colorize("Warning: Bad debt management.", Attribute.RED_TEXT(), Attribute.BOLD()));
+                    System.out.println(Ansi.colorize(stockNameMessage + pair.message, Attribute.BOLD(), Attribute.RED_TEXT()));
                 }
-            }
-
-            if (stock.getPriceToBook() < 0.0) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Price-to-Book ratio is negative.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (stock.getOperatingCashflow() < 0.0) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Operating Cashflow is negative.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (stock.getFreeCashflow() < 0.0) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Free Cashflow is negative.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (stock.getEnterpriseValue() < 0.0) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Enterprise Value is negative.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (!(stock.getProfitMargins() > 0 && stock.getGrossMargins() > 0 && stock.getEbitdaMargins() > 0
-                    && stock.getOperatingMargins() > 0 && stock.getReturnOnAssets() > 0 && stock.getReturnOnEquity() > 0
-                    && stock.getRevenueGrowth() > 0)) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Bad profit margins.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (change1d < -20 || change5d < -15 || change1m < -10) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Bad short-term stock performance.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (change6m < 0 || change12m < 0) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Bad long-term stock performance.", Attribute.RED_TEXT(), Attribute.BOLD()));
-            }
-
-            if (change6m <= 5 || change12m <= 10) {
-                warning = true;
-                System.out.println(Ansi.colorize("Warning: Low stock growth.", Attribute.RED_TEXT(), Attribute.BOLD()));
             }
 
             if (!warning) {
                 goodStocks.add(stock.getSymbol());
-                //System.out.println();
-                //System.out.println("Press the \"ENTER\" key to continue...");
-                //Scanner s = new Scanner(System.in);
-                //s.nextLine();
-            } else {
-                TimeUnit.MILLISECONDS.sleep(2500);
             }
+
+            TimeUnit.MILLISECONDS.sleep(2500);
 
         } catch (Exception ex) {
             ex.printStackTrace();
         }
+    }
+
+    private static <T> void printColoredStockValue(String label, T value, Attribute defaultAttribute,
+                                                   List<ColorCondition> conditions) {
+        if (value != null) {
+            String formattedValue = value.toString();
+
+            System.out.print(Ansi.colorize(label + ": ", Attribute.BOLD()));
+
+            for (ColorCondition condition : conditions) {
+                if (condition.isApplicable()) {
+                    System.out.println(condition.colorize(formattedValue));
+                    return;
+                }
+            }
+
+            System.out.println(Ansi.colorize(formattedValue, defaultAttribute));
+        }
+    }
+
+    private static <T> void printColoredStockValue(String label, T value, List<ColorCondition> conditions,
+                                                   Function<T, String> valueFormatter, Attribute... defaultAttribute) {
+        if (value != null) {
+            String formattedValue = valueFormatter.apply(value);
+
+            System.out.print(Ansi.colorize(label + ": ", Attribute.BOLD()));
+
+            for (ColorCondition condition : conditions) {
+                if (condition.isApplicable()) {
+                    System.out.println(condition.colorize(formattedValue));
+                    return;
+                }
+            }
+
+            System.out.println(Ansi.colorize(formattedValue, defaultAttribute));
+        }
+    }
+
+    private static void printChange(String label, double value) {
+        Function<Double, String> changeFormatter = v -> formatDouble(v) + "%";
+
+        printColoredStockValue(label, value, Arrays.asList(
+                new ColorCondition(value >= 20.0, Attribute.BLACK_TEXT(), Attribute.BRIGHT_GREEN_BACK()),
+                new ColorCondition(value >= 15.0, Attribute.BLACK_TEXT(), Attribute.GREEN_BACK()),
+                new ColorCondition(value >= 10.0, Attribute.BRIGHT_GREEN_TEXT()),
+                new ColorCondition(value >= 5.0, Attribute.GREEN_TEXT()),
+                new ColorCondition(value > 0.0, Attribute.YELLOW_TEXT()),
+                new ColorCondition(value > -10.0, Attribute.RED_TEXT()),
+                new ColorCondition(value >= -15.0, Attribute.BLACK_TEXT(), Attribute.RED_BACK())
+        ), changeFormatter, Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK());
     }
 
     public static void printStockError(Stock stock) {
@@ -669,3 +520,4 @@ public class Athena {
         System.out.println();
     }
 }
+
