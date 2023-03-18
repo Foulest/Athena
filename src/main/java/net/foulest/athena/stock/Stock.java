@@ -20,6 +20,14 @@ public class Stock {
     private String currencySymbol;
     private String marketState;
 
+    private Double change1d;
+    private Double change5d;
+    private Double change1m;
+    private Double change3m;
+    private Double change6m;
+    private Double change12m;
+    private Double averageChange;
+
     private Double averageMargins;
     private Double cashToDebtRatio;
     private Double open;
@@ -89,6 +97,7 @@ public class Stock {
     private Double ebitdaMargins;
     private Double operatingMargins;
     private Double profitMargins;
+    private Double investmentQuality;
 
     private Double enterpriseValue;
     private Double floatShares;
@@ -111,7 +120,7 @@ public class Stock {
     private Integer netIncomeToCommon;
     private Double trailingEPS;
     private Double forwardEPS;
-    private Double pegRatio;
+    private Double PEGRatio;
     private String lastSplitFactor;
     private Long lastSplitDate;
     private Double enterpriseToRevenue;

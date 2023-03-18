@@ -7,7 +7,6 @@ import net.foulest.athena.histquotes.QueryInterval;
 import net.foulest.athena.stock.Stock;
 import net.foulest.athena.stock.StockData;
 import net.foulest.athena.util.ColorCondition;
-import net.foulest.athena.util.ConditionMessagePair;
 import net.foulest.athena.util.Utils;
 
 import java.io.*;
@@ -25,7 +24,7 @@ public class Athena {
 
     public static Calendar from = Calendar.getInstance();
     public static Calendar to = Calendar.getInstance();
-    public static List<String> goodStocks = new ArrayList<>();
+    public static List<Stock> goodStocks = new ArrayList<>();
 
     /**
      * The main method.
@@ -148,10 +147,26 @@ public class Athena {
      * @param stockHistory The stock's price history.
      */
     private static void analyzeStock(Stock stock, List<HistoricalQuote> stockHistory) {
-        boolean warning = false;
-
         try {
-            if (stockHistory.isEmpty()) {
+            if (stockHistory.isEmpty() || stock.getName() == null || stock.getIndustry() == null
+                    || stock.getSector() == null || stock.getFullTimeEmployees() == null
+                    || stock.getAverageVolume10Days() == null || stock.getMarketCap() == null
+                    || stock.getEnterpriseValue() == null || stock.getAnalystScore() == null
+                    || stock.getTotalCashPerShare() == null || stock.getRevenuePerShare() == null
+                    || stock.getFreeCashflow() == null || stock.getOperatingCashflow() == null
+                    || stock.getTotalCash() == null || stock.getTotalDebt() == null
+                    || stock.getTotalRevenue() == null || stock.getGrossProfits() == null
+                    || stock.getEbitda() == null || stock.getRevenueGrowth() == null
+                    || stock.getEarningsGrowth() == null || stock.getEarningsQuarterlyGrowth() == null
+                    || stock.getCurrentRatio() == null || stock.getQuickRatio() == null
+                    || stock.getDebtToEquity() == null || stock.getBeta() == null || stock.getForwardPE() == null
+                    || stock.getPEGRatio() == null || stock.getEnterpriseToEbitda() == null
+                    || stock.getEnterpriseToRevenue() == null || stock.getEbitdaMargins() == null
+                    || stock.getGrossMargins() == null || stock.getOperatingMargins() == null
+                    || stock.getProfitMargins() == null || stock.getReturnOnAssets() == null
+                    || stock.getReturnOnEquity() == null || stock.getBookValue() == null
+                    || stock.getPriceToBook() == null || stock.getForwardEPS() == null
+                    || stock.getTrailingEPS() == null || stockHistory.size() < 253) {
                 printStockError(stock);
                 TimeUnit.MILLISECONDS.sleep(2500);
                 return;
@@ -174,11 +189,13 @@ public class Athena {
             }
 
             // Calculate the stock's market changes directly while iterating over the stock history
-            double change1d = formatDouble(((stock.getClose() - stockOpens[stockOpens.length - 1]) / stockOpens[stockOpens.length - 1]) * 100);
-            double change5d = formatDouble(((stock.getClose() - stockOpens[stockOpens.length - 5]) / stockOpens[stockOpens.length - 5]) * 100);
-            double change1m = formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 21]) / stockCloses[stockCloses.length - 22]) * 100);
-            double change6m = formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 124]) / stockCloses[stockCloses.length - 124]) * 100);
-            double change12m = formatDouble((stock.getClose() - stockCloses[stockCloses.length - 253]) / stockCloses[stockCloses.length - 253] * 100);
+            stock.setChange1d(formatDouble(((stock.getClose() - stockOpens[stockOpens.length - 1]) / stockOpens[stockOpens.length - 1]) * 100));
+            stock.setChange5d(formatDouble(((stock.getClose() - stockOpens[stockOpens.length - 5]) / stockOpens[stockOpens.length - 5]) * 100));
+            stock.setChange1m(formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 21]) / stockCloses[stockCloses.length - 22]) * 100));
+            stock.setChange3m(formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 63]) / stockCloses[stockCloses.length - 124]) * 100));
+            stock.setChange6m(formatDouble(((stock.getClose() - stockCloses[stockCloses.length - 124]) / stockCloses[stockCloses.length - 124]) * 100));
+            stock.setChange12m(formatDouble((stock.getClose() - stockCloses[stockCloses.length - 253]) / stockCloses[stockCloses.length - 253] * 100));
+            stock.setAverageChange(formatDouble(calculateWeightedAverageChangePercentage(stock)));
 
             // Stock Header
             System.out.println();
@@ -268,11 +285,13 @@ public class Athena {
 
             System.out.println();
 
-            printChange("Change (1 Day)", change1d);
-            printChange("Change (5 Days)", change5d);
-            printChange("Change (1 Month)", change1m);
-            printChange("Change (6 Month)", change6m);
-            printChange("Change (1 Year)", change12m);
+            printChange("Change (1 Day)", stock.getChange1m());
+            printChange("Change (5 Days)", stock.getChange5d());
+            printChange("Change (1 Month)", stock.getChange1m());
+            printChange("Change (3 Month)", stock.getChange3m());
+            printChange("Change (6 Month)", stock.getChange6m());
+            printChange("Change (1 Year)", stock.getChange12m());
+            printChange("Average Change", calculateWeightedAverageChangePercentage(stock));
 
             System.out.println();
 
@@ -282,43 +301,35 @@ public class Athena {
                     new ColorCondition(stock.getRevenueGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
             ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
-            printColoredStockValue("Earnings Growth", stock.getEarningsGrowth() * 100, Arrays.asList(
-                    new ColorCondition(stock.getEarningsGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
-                    new ColorCondition(stock.getEarningsGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
-                    new ColorCondition(stock.getEarningsGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
-            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
+            if (stock.getEarningsGrowth() != null) {
+                printColoredStockValue("Earnings Growth", stock.getEarningsGrowth() * 100, Arrays.asList(
+                        new ColorCondition(stock.getEarningsGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
+                        new ColorCondition(stock.getEarningsGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
+                        new ColorCondition(stock.getEarningsGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
+                ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
+            }
 
-            printColoredStockValue("Earnings Quarterly Growth", stock.getEarningsQuarterlyGrowth() * 100, Arrays.asList(
-                    new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
-                    new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
-                    new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
-            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
+            if (stock.getEarningsQuarterlyGrowth() != null) {
+                printColoredStockValue("Earnings Quarterly Growth", stock.getEarningsQuarterlyGrowth() * 100, Arrays.asList(
+                        new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 15.0, Attribute.BRIGHT_GREEN_TEXT()),
+                        new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 5.0, Attribute.GREEN_TEXT()),
+                        new ColorCondition(stock.getEarningsQuarterlyGrowth() * 100 >= 0.0, Attribute.YELLOW_TEXT())
+                ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
+            }
 
             System.out.println();
 
-            printColoredStockValue("Beta", stock.getBeta(), Arrays.asList(
-                    new ColorCondition(stock.getBeta() >= 1.1, Attribute.RED_TEXT()),
-                    new ColorCondition(stock.getBeta() >= 0.9, Attribute.YELLOW_TEXT()),
-                    new ColorCondition(stock.getBeta() >= 0.8, Attribute.GREEN_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
+            printColoredStockValue("Current Ratio", stock.getCurrentRatio(), Arrays.asList(
+                    new ColorCondition(stock.getCurrentRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getCurrentRatio() >= 2.0, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getCurrentRatio() >= 1.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
-//            printColoredStockValue("Current Ratio", stock.getCurrentRatio(), Arrays.asList(
-//                    new ColorCondition(stock.getCurrentRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
-//                    new ColorCondition(stock.getCurrentRatio() >= 2.0, Attribute.GREEN_TEXT()),
-//                    new ColorCondition(stock.getCurrentRatio() >= 1.0, Attribute.YELLOW_TEXT())
-//            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
-
-            printColoredStockValue("Forward PE", stock.getForwardPE(), Arrays.asList(
-                    new ColorCondition(stock.getForwardPE() >= 20.0, Attribute.RED_TEXT()),
-                    new ColorCondition(stock.getForwardPE() >= 10.0, Attribute.YELLOW_TEXT()),
-                    new ColorCondition(stock.getForwardPE() >= 5.0, Attribute.GREEN_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
-
-            printColoredStockValue("PEG Ratio", stock.getPegRatio(), Arrays.asList(
-                    new ColorCondition(stock.getPegRatio() >= 3.0, Attribute.RED_TEXT()),
-                    new ColorCondition(stock.getPegRatio() >= 2.0, Attribute.YELLOW_TEXT()),
-                    new ColorCondition(stock.getPegRatio() >= 1.0, Attribute.GREEN_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
+            printColoredStockValue("Quick Ratio", stock.getQuickRatio(), Arrays.asList(
+                    new ColorCondition(stock.getQuickRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
+                    new ColorCondition(stock.getQuickRatio() >= 1.5, Attribute.GREEN_TEXT()),
+                    new ColorCondition(stock.getQuickRatio() >= 1.0, Attribute.YELLOW_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
             printColoredStockValue("Debt-to-Equity Ratio", stock.getDebtToEquity() / 100, Arrays.asList(
                     new ColorCondition(stock.getDebtToEquity() / 100 > 2.0, Attribute.RED_TEXT()),
@@ -326,21 +337,27 @@ public class Athena {
                     new ColorCondition(stock.getDebtToEquity() / 100 >= 0.5, Attribute.GREEN_TEXT())
             ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
 
-//            printColoredStockValue("Quick Ratio", stock.getQuickRatio(), Arrays.asList(
-//                    new ColorCondition(stock.getQuickRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
-//                    new ColorCondition(stock.getQuickRatio() >= 1.5, Attribute.GREEN_TEXT()),
-//                    new ColorCondition(stock.getQuickRatio() >= 1.0, Attribute.YELLOW_TEXT())
-//            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            System.out.println();
 
-            if (stock.getCurrentRatio() != null && stock.getQuickRatio() != null) {
-                stock.setCashToDebtRatio((stock.getCurrentRatio() + stock.getQuickRatio()) / 2);
-
-                printColoredStockValue("Cash-to-Debt Ratio", stock.getCashToDebtRatio(), Arrays.asList(
-                        new ColorCondition(stock.getCashToDebtRatio() >= 3.0, Attribute.BRIGHT_GREEN_TEXT()),
-                        new ColorCondition(stock.getCashToDebtRatio() >= 1.5, Attribute.GREEN_TEXT()),
-                        new ColorCondition(stock.getCashToDebtRatio() >= 1.0, Attribute.YELLOW_TEXT())
-                ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            if (stock.getBeta() != null) {
+                printColoredStockValue("Beta", stock.getBeta(), Arrays.asList(
+                        new ColorCondition(stock.getBeta() >= 1.1, Attribute.RED_TEXT()),
+                        new ColorCondition(stock.getBeta() >= 0.9, Attribute.YELLOW_TEXT()),
+                        new ColorCondition(stock.getBeta() >= 0.8, Attribute.GREEN_TEXT())
+                ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
             }
+
+            printColoredStockValue("Forward PE", stock.getForwardPE(), Arrays.asList(
+                    new ColorCondition(stock.getForwardPE() >= 20.0, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getForwardPE() >= 10.0, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getForwardPE() >= 5.0, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
+
+            printColoredStockValue("PEG Ratio", stock.getPEGRatio(), Arrays.asList(
+                    new ColorCondition(stock.getPEGRatio() >= 3.0, Attribute.RED_TEXT()),
+                    new ColorCondition(stock.getPEGRatio() >= 2.0, Attribute.YELLOW_TEXT()),
+                    new ColorCondition(stock.getPEGRatio() >= 1.0, Attribute.GREEN_TEXT())
+            ), v -> String.valueOf(formatDouble(v)), Attribute.BRIGHT_GREEN_TEXT());
 
             printColoredStockValue("Enterprise Value to EBITDA", stock.getEnterpriseToEbitda(), Arrays.asList(
                     new ColorCondition(stock.getEnterpriseToEbitda() >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
@@ -360,37 +377,37 @@ public class Athena {
                     new ColorCondition(stock.getEbitdaMargins() * 100 >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
                     new ColorCondition(stock.getEbitdaMargins() * 100 >= 10.0, Attribute.GREEN_TEXT()),
                     new ColorCondition(stock.getEbitdaMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
             printColoredStockValue("Gross Margins", stock.getGrossMargins() * 100, Arrays.asList(
                     new ColorCondition(stock.getGrossMargins() * 100 >= 60.0, Attribute.BRIGHT_GREEN_TEXT()),
                     new ColorCondition(stock.getGrossMargins() * 100 >= 40.0, Attribute.GREEN_TEXT()),
                     new ColorCondition(stock.getGrossMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
             printColoredStockValue("Operating Margins", stock.getOperatingMargins() * 100, Arrays.asList(
                     new ColorCondition(stock.getOperatingMargins() * 100 >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
                     new ColorCondition(stock.getOperatingMargins() * 100 >= 10.0, Attribute.GREEN_TEXT()),
                     new ColorCondition(stock.getOperatingMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
             printColoredStockValue("Profit Margins", stock.getProfitMargins() * 100, Arrays.asList(
                     new ColorCondition(stock.getProfitMargins() * 100 >= 20.0, Attribute.BRIGHT_GREEN_TEXT()),
                     new ColorCondition(stock.getProfitMargins() * 100 >= 10.0, Attribute.GREEN_TEXT()),
                     new ColorCondition(stock.getProfitMargins() * 100 > 0.0, Attribute.YELLOW_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
             printColoredStockValue("Return on Assets", stock.getReturnOnAssets() * 100, Arrays.asList(
                     new ColorCondition(stock.getReturnOnAssets() * 100 > 6.0, Attribute.BRIGHT_GREEN_TEXT()),
                     new ColorCondition(stock.getReturnOnAssets() * 100 >= 3.0, Attribute.GREEN_TEXT()),
                     new ColorCondition(stock.getReturnOnAssets() * 100 >= 1.0, Attribute.YELLOW_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
             printColoredStockValue("Return on Equity", stock.getReturnOnEquity() * 100, Arrays.asList(
                     new ColorCondition(stock.getReturnOnEquity() * 100 > 20.0, Attribute.BRIGHT_GREEN_TEXT()),
                     new ColorCondition(stock.getReturnOnEquity() * 100 >= 15.0, Attribute.GREEN_TEXT()),
                     new ColorCondition(stock.getReturnOnEquity() * 100 >= 10.0, Attribute.YELLOW_TEXT())
-            ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
+            ), v -> formatDouble(v) + "%", Attribute.RED_TEXT());
 
             System.out.println();
 
@@ -418,42 +435,17 @@ public class Athena {
                     new ColorCondition(stock.getTrailingEPS() >= 0.5, Attribute.YELLOW_TEXT())
             ), v -> String.valueOf(formatDouble(v)), Attribute.RED_TEXT());
 
+            System.out.println();
+
+            calculateInvestmentQuality(stock);
+
             // Prints a Google link to the stock for more information.
             System.out.println();
             System.out.println(Ansi.colorize("https://google.com/search?q=" + stock.getSymbol() + "+stock", Attribute.CYAN_TEXT()));
             System.out.println();
 
-            // The list of conditions that merit a warning.
-            List<ConditionMessagePair> conditions = Arrays.asList(
-                    new ConditionMessagePair(stock.getFreeCashflow() < 0, "has negative free cash flow."),
-                    new ConditionMessagePair(stock.getOperatingCashflow() < 0, "has negative operating cash flow."),
-                    new ConditionMessagePair(stock.getEbitda() < 0, "has negative EBITDA."),
-                    new ConditionMessagePair(stock.getTotalCash() < 0, "has negative total cash."),
-                    new ConditionMessagePair(stock.getTotalRevenue() < 0, "has negative total revenue."),
-                    new ConditionMessagePair(stock.getGrossProfits() < 0, "has negative gross profits."),
-                    new ConditionMessagePair(stock.getCashToDebtRatio() < 1, "has a debt to cash ratio less than 1."),
-                    new ConditionMessagePair(stock.getDebtToEquity() / 100 > 2.0, "has a debt to equity ratio greater than 2.0."),
-                    new ConditionMessagePair(stock.getForwardEPS() < 0.5, "has a forward EPS less than 0.5."),
-                    new ConditionMessagePair(stock.getTrailingEPS() < 0.5, "has a trailing EPS less than 0.5."),
-                    new ConditionMessagePair(stock.getEbitdaMargins() < 0, "has negative EBITDA margins."),
-                    new ConditionMessagePair(stock.getOperatingMargins() < 0, "has negative operating margins."),
-                    new ConditionMessagePair(stock.getGrossMargins() < 0, "has negative gross margins."),
-                    new ConditionMessagePair(stock.getProfitMargins() < 0, "has negative profit margins."),
-                    new ConditionMessagePair(stock.getReturnOnAssets() < 0, "has negative return on assets."),
-                    new ConditionMessagePair(stock.getReturnOnEquity() < 0, "has negative return on equity.")
-            );
-
-            String stockNameMessage = "This stock, " + stock.getName() + ", ";
-
-            for (ConditionMessagePair pair : conditions) {
-                if (pair.condition) {
-                    warning = true;
-                    System.out.println(Ansi.colorize(stockNameMessage + pair.message, Attribute.BOLD(), Attribute.RED_TEXT()));
-                }
-            }
-
-            if (!warning) {
-                goodStocks.add(stock.getSymbol());
+            if (stock.getInvestmentQuality() >= 70) {
+                goodStocks.add(stock);
             }
 
             TimeUnit.MILLISECONDS.sleep(2500);
@@ -511,6 +503,114 @@ public class Athena {
                 new ColorCondition(value > -10.0, Attribute.RED_TEXT()),
                 new ColorCondition(value >= -15.0, Attribute.BLACK_TEXT(), Attribute.RED_BACK())
         ), changeFormatter, Attribute.BLACK_TEXT(), Attribute.BRIGHT_RED_BACK());
+    }
+
+    public static void calculateInvestmentQuality(Stock stock) {
+        int totalScore = 0;
+        int maxScore = 10;
+
+        double weightedAverageChange = calculateWeightedAverageChangePercentage(stock);
+
+        totalScore += (stock.getAverageVolume10Days() >= 1000000) ? 1 : 0;
+        totalScore += (stock.getMarketCap() >= 1000000000) ? 1 : 0;
+        totalScore += (stock.getEnterpriseValue() > 0 && stock.getEnterpriseToEbitda() >= 10.0 && stock.getEnterpriseToRevenue() >= 1.0) ? 1 : 0;
+        totalScore += (stock.getFreeCashflow() > 0 && stock.getOperatingCashflow() > 0 && stock.getTotalCash() > 0
+                && stock.getTotalRevenue() > 0 && stock.getGrossProfits() > 0 && stock.getEbitda() > 0
+                && stock.getTotalDebt() < stock.getFreeCashflow() && stock.getTotalDebt() < stock.getOperatingCashflow()
+                && stock.getTotalDebt() < stock.getTotalCash() && stock.getTotalDebt() < stock.getTotalRevenue()
+                && stock.getTotalDebt() < stock.getGrossProfits() && stock.getTotalDebt() < stock.getEbitda()
+                && stock.getCurrentRatio() >= 1.5 && stock.getQuickRatio() >= 1.5 && stock.getDebtToEquity() / 100 <= 0.5) ? 1 : 0;
+        totalScore += (weightedAverageChange > 0) ? 1 : 0;
+        totalScore += (stock.getRevenueGrowth() > 0 && stock.getEarningsGrowth() > 0 && stock.getEarningsQuarterlyGrowth() > 0) ? 1 : 0;
+        totalScore += (stock.getBeta() >= 0.5 && stock.getBeta() <= 1.3) ? 1 : 0;
+        totalScore += (stock.getForwardPE() <= 20.0) ? 1 : 0;
+        totalScore += (stock.getPEGRatio() <= 2.0) ? 1 : 0;
+        totalScore += (stock.getEbitdaMargins() * 100 >= 10.0 && stock.getGrossMargins() * 100 >= 40.0
+                && stock.getOperatingMargins() * 100 >= 10.0 && stock.getProfitMargins() * 100 >= 10.0
+                && stock.getReturnOnAssets() * 100 >= 3.0 && stock.getReturnOnEquity() * 100 >= 15.0) ? 1 : 0;
+
+        double totalScorePercent = (totalScore / (double) maxScore) * 100;
+        printColoredStockValue("Investment Quality", totalScorePercent, Arrays.asList(
+                new ColorCondition(totalScorePercent >= 80.0, Attribute.BRIGHT_GREEN_TEXT()),
+                new ColorCondition(totalScorePercent >= 70.0, Attribute.GREEN_TEXT()),
+                new ColorCondition(totalScorePercent >= 60.0, Attribute.YELLOW_TEXT())
+        ), v -> String.format("%.2f", v) + "%", Attribute.RED_TEXT());
+
+        System.out.println();
+
+        if (totalScore < maxScore) {
+            System.out.println(Ansi.colorize("Investment Concerns:", Attribute.BOLD()));
+
+            if (stock.getAverageVolume10Days() < 1000000) {
+                System.out.println("- Bad Average Volume");
+            }
+
+            if (stock.getMarketCap() < 1000000000) {
+                System.out.println("- Bad Market Cap");
+            }
+
+            if (stock.getEnterpriseValue() <= 0 || stock.getEnterpriseToEbitda() < 10.0 || stock.getEnterpriseToRevenue() < 1.0) {
+                System.out.println("- Bad Enterprise Value");
+            }
+
+            if (stock.getFreeCashflow() <= 0 || stock.getOperatingCashflow() <= 0 || stock.getTotalCash() <= 0
+                    || stock.getTotalRevenue() <= 0 || stock.getGrossProfits() <= 0 || stock.getEbitda() <= 0
+                    || stock.getTotalDebt() >= stock.getFreeCashflow()
+                    || stock.getTotalDebt() >= stock.getOperatingCashflow()
+                    || stock.getTotalDebt() >= stock.getTotalCash()
+                    || stock.getTotalDebt() >= stock.getTotalRevenue()
+                    || stock.getTotalDebt() >= stock.getGrossProfits()
+                    || stock.getTotalDebt() >= stock.getEbitda()
+                    || stock.getCurrentRatio() < 1.5
+                    || stock.getQuickRatio() < 1.5
+                    || stock.getDebtToEquity() / 100 >= 0.5) {
+                System.out.println("- Bad Debt Management");
+            }
+
+            if (weightedAverageChange <= 0) {
+                System.out.println("- Bad Stock Performance");
+            }
+
+            if (stock.getRevenueGrowth() <= 0 || stock.getEarningsGrowth() <= 0 || stock.getEarningsQuarterlyGrowth() <= 0) {
+                System.out.println("- Bad Recent Earnings");
+            }
+
+            if (stock.getBeta() < 0.5 || stock.getBeta() > 1.3) {
+                System.out.println("- Bad Beta");
+            }
+
+            if (stock.getForwardPE() > 20.0) {
+                System.out.println("- Bad Forward PE");
+            }
+
+            if (stock.getPEGRatio() > 2.0) {
+                System.out.println("- Bad PEG Ratio");
+            }
+
+            if (stock.getEbitdaMargins() * 100 < 10.0 || stock.getGrossMargins() * 100 < 40.0
+                    || stock.getOperatingMargins() * 100 < 10.0 || stock.getProfitMargins() * 100 < 10.0
+                    || stock.getReturnOnAssets() * 100 < 3.0 || stock.getReturnOnEquity() * 100 < 15.0) {
+                System.out.println("- Bad Margins");
+            }
+        }
+
+        stock.setInvestmentQuality(totalScorePercent);
+    }
+
+    public static double calculateWeightedAverageChangePercentage(Stock stock) {
+        double weight1Day = 0.05;
+        double weight5Days = 0.1;
+        double weight1Month = 0.15;
+        double weight3Months = 0.2;
+        double weight6Months = 0.25;
+        double weight1Year = 0.25;
+
+        return weight1Day * stock.getChange1d() +
+                weight5Days * stock.getChange5d() +
+                weight1Month * stock.getChange1m() +
+                weight3Months * stock.getChange3m() +
+                weight6Months * stock.getChange6m() +
+                weight1Year * stock.getChange12m();
     }
 
     public static void printStockError(Stock stock) {

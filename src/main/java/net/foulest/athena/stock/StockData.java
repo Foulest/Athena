@@ -129,7 +129,7 @@ public class StockData {
             stock.setNetIncomeToCommon(defaultKeyStatistics.get("netIncomeToCommon") == null ? null : defaultKeyStatistics.get("netIncomeToCommon").asInt());
             stock.setTrailingEPS(defaultKeyStatistics.get("trailingEps").get("raw") == null ? null : defaultKeyStatistics.get("trailingEps").get("raw").asDouble());
             stock.setForwardEPS(defaultKeyStatistics.get("forwardEps").get("raw") == null ? null : defaultKeyStatistics.get("forwardEps").get("raw").asDouble());
-            stock.setPegRatio(defaultKeyStatistics.get("pegRatio").get("raw") == null ? null : defaultKeyStatistics.get("pegRatio").get("raw").asDouble());
+            stock.setPEGRatio(defaultKeyStatistics.get("pegRatio").get("raw") == null ? null : defaultKeyStatistics.get("pegRatio").get("raw").asDouble());
             stock.setLastSplitFactor(defaultKeyStatistics.get("lastSplitFactor") == null ? null : defaultKeyStatistics.get("lastSplitFactor").asText());
             stock.setLastSplitDate(defaultKeyStatistics.get("lastSplitDate") == null ? null : defaultKeyStatistics.get("lastSplitDate").asLong());
             stock.setEnterpriseToRevenue(defaultKeyStatistics.get("enterpriseToRevenue").get("raw") == null ? null : defaultKeyStatistics.get("enterpriseToRevenue").get("raw").asDouble());
