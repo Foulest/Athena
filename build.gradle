@@ -4,28 +4,47 @@ plugins {
 }
 
 group = 'net.foulest'
-version = '1.0.1'
+version = '1.0.2'
 description = 'Athena'
+compileJava.options.encoding = 'UTF-8'
 
 repositories {
+    // Maven central repository
     mavenCentral()
+
+    // Maven local repository
     mavenLocal()
 
+    // Local libraries
     flatDir {
         dirs 'libs'
     }
 }
 
 configurations {
-    provided
+    provided // Custom configuration for compile-only dependencies
     implementation.extendsFrom(provided)
 }
 
 dependencies {
+    // Jackson Core - for JSON parsing
+    // https://github.com/FasterXML/jackson-core
     provided group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.16.0'
+
+    // Apache Commons CSV - for reading CSV files
+    // https://commons.apache.org/proper/commons-csv
     provided group: 'org.apache.commons', name: 'commons-csv', version: '1.10.0'
+
+    // JColor - for ANSI color codes
+    // https://github.com/dialex/JColor
     provided group: 'com.diogonunes', name: 'JColor', version: '5.5.1'
+
+    // Apache Commons Math - for statistics
+    // https://commons.apache.org/proper/commons-math
     provided group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
+
+    // Lombok - for reducing boilerplate code
+    // https://projectlombok.org
     implementation group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
     annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
 }
@@ -33,10 +52,12 @@ dependencies {
 jar {
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
 
+    // Set the 'Main-Class' attribute in the JAR manifest
     manifest {
         attributes 'Main-Class': 'net.foulest.athena.Athena'
     }
 
+    // Include compile-only dependencies in the JAR
     from {
         configurations.provided.asFileTree.files.collect {
             zipTree(it)

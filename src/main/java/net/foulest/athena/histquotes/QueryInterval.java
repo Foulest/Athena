@@ -3,6 +3,7 @@ package net.foulest.athena.histquotes;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+@Getter
 @AllArgsConstructor
 public enum QueryInterval {
 
@@ -10,6 +11,5 @@ public enum QueryInterval {
     WEEKLY("5d"),
     MONTHLY("1mo");
 
-    @Getter
     private final String tag;
 }

@@ -124,17 +124,14 @@ public class Athena {
             ex.printStackTrace();
         }
 
-        List<Stock> goodStocks = futures.stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        e.printStackTrace();
-                    }
-                    return null;
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        List<Stock> goodStocks = futures.stream().map(future -> {
+            try {
+                return future.get();
+            } catch (InterruptedException | ExecutionException ex) {
+                ex.printStackTrace();
+            }
+            return null;
+        }).filter(Objects::nonNull).collect(Collectors.toList());
 
         executor.shutdown();
         System.out.println(goodStocks);
@@ -449,7 +446,6 @@ public class Athena {
             }
 
             TimeUnit.MILLISECONDS.sleep(2500);
-
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -605,18 +601,20 @@ public class Athena {
         double weight6Months = 0.25;
         double weight1Year = 0.25;
 
-        return weight1Day * stock.getChange1d() +
-                weight5Days * stock.getChange5d() +
-                weight1Month * stock.getChange1m() +
-                weight3Months * stock.getChange3m() +
-                weight6Months * stock.getChange6m() +
-                weight1Year * stock.getChange12m();
+        return weight1Day * stock.getChange1d()
+                + weight5Days * stock.getChange5d()
+                + weight1Month * stock.getChange1m()
+                + weight3Months * stock.getChange3m()
+                + weight6Months * stock.getChange6m()
+                + weight1Year * stock.getChange12m();
     }
 
     public static void printStockError(Stock stock) {
         System.out.println();
-        System.out.println(Ansi.colorize("This stock, " + stock.getName() + ", is missing necessary information.", Attribute.BOLD(), Attribute.RED_TEXT()));
-        System.out.println(Ansi.colorize("https://google.com/search?q=" + stock.getSymbol() + "+stock", Attribute.CYAN_TEXT()));
+        System.out.println(Ansi.colorize("This stock, " + stock.getName()
+                + ", is missing necessary information.", Attribute.BOLD(), Attribute.RED_TEXT()));
+        System.out.println(Ansi.colorize("https://google.com/search?q="
+                + stock.getSymbol() + "+stock", Attribute.CYAN_TEXT()));
         System.out.println();
     }
 }

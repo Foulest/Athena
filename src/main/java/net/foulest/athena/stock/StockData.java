@@ -160,10 +160,9 @@ public class StockData {
             try (InputStreamReader is = new InputStreamReader(connection.getInputStream())) {
                 return objectMapper.readTree(is);
             }
-
-        } catch (Exception e) {
+        } catch (Exception ex) {
             System.err.println("Error fetching JSON data from: " + url);
-            e.printStackTrace();
+            ex.printStackTrace();
             return null;
         }
     }

@@ -12,7 +12,6 @@ import java.util.Calendar;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class Utils {
 
@@ -20,7 +19,6 @@ public class Utils {
     public static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);
     public static final BigDecimal MILLION = BigDecimal.valueOf(1_000_000);
     public static final BigDecimal BILLION = BigDecimal.valueOf(1_000_000_000);
-
     private static final NumberFormat INTEGER_FORMAT = NumberFormat.getIntegerInstance();
     private static final DecimalFormat DOUBLE_FORMAT = new DecimalFormat("#.##");
 
@@ -44,7 +42,7 @@ public class Utils {
     }
 
     private static boolean isParseable(String data) {
-        return !(data == null || data.equals("N/A") || data.equals("-") || data.equals("") || data.equals("nan"));
+        return !(data == null || data.equals("N/A") || data.equals("-") || data.isEmpty() || data.equals("nan"));
     }
 
     public static BigDecimal getBigDecimal(String data) {
@@ -77,7 +75,6 @@ public class Utils {
             return new BigDecimal(data).multiply(multiplier);
         } catch (NumberFormatException ignored) {
         }
-
         return null;
     }
 
@@ -91,7 +88,6 @@ public class Utils {
             return Long.parseLong(data);
         } catch (NumberFormatException ignored) {
         }
-
         return null;
     }
 
@@ -113,10 +109,8 @@ public class Utils {
                 c.setTime(format.parse(date));
                 return c;
             }
-
         } catch (ParseException ignored) {
         }
-
         return null;
     }
 
@@ -125,12 +119,10 @@ public class Utils {
     }
 
     public static String getURLParameters(Map<String, String> params) {
-        return params.entrySet().stream()
-                .map(entry -> {
-                    String key = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
-                    String value = URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8);
-                    return key + "=" + value;
-                })
-                .collect(Collectors.joining("&"));
+        return params.entrySet().stream().map(entry -> {
+            String key = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
+            String value = URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8);
+            return key + "=" + value;
+        }).collect(Collectors.joining("&"));
     }
 }

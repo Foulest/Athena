@@ -1,11 +1,9 @@
 package net.foulest.athena.histquotes;
 
-import lombok.AllArgsConstructor;
 import net.foulest.athena.util.RedirectableRequest;
 import net.foulest.athena.util.Utils;
 
 import java.io.BufferedReader;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -14,8 +12,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-@AllArgsConstructor
-public class HistoricalQuotesRequest {
+public record HistoricalQuotesRequest(String symbol, Calendar from, Calendar to, QueryInterval interval) {
 
     public static final Calendar DEFAULT_FROM = Calendar.getInstance();
     public static final Calendar DEFAULT_TO = Calendar.getInstance();
@@ -23,11 +20,6 @@ public class HistoricalQuotesRequest {
     static {
         DEFAULT_FROM.add(Calendar.YEAR, -1);
     }
-
-    public final String symbol;
-    public final Calendar from;
-    public final Calendar to;
-    public final QueryInterval interval;
 
     public List<HistoricalQuote> getResult() throws IOException {
         if (from.after(to)) {
@@ -48,6 +40,7 @@ public class HistoricalQuotesRequest {
         redirectableRequest.setReadTimeout(10000);
 
         URLConnection connection = redirectableRequest.openConnection();
+
         try (InputStreamReader is = new InputStreamReader(connection.getInputStream());
              BufferedReader br = new BufferedReader(is)) {
 
@@ -58,7 +51,6 @@ public class HistoricalQuotesRequest {
                 HistoricalQuote quote = parseCSVLine(line);
                 result.add(quote);
             }
-
             return result;
         }
     }

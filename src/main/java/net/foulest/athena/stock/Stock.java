@@ -142,7 +142,6 @@ public class Stock {
         if (history != null) {
             return history;
         }
-
         return getHistory(HistoricalQuotesRequest.DEFAULT_FROM);
     }
 
