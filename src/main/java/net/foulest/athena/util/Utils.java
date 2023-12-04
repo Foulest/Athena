@@ -1,9 +1,9 @@
 package net.foulest.athena.util;
 
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
@@ -56,22 +56,21 @@ public class Utils {
             BigDecimal multiplier = BigDecimal.ONE;
 
             switch (lastChar) {
-                case 'B' -> {
+                case 'B':
                     data = data.substring(0, data.length() - 1);
                     multiplier = BILLION;
-                }
-                case 'M' -> {
+                    break;
+                case 'M':
                     data = data.substring(0, data.length() - 1);
                     multiplier = MILLION;
-                }
-                case 'K' -> {
+                    break;
+                case 'K':
                     data = data.substring(0, data.length() - 1);
                     multiplier = THOUSAND;
-                }
-                default -> {
-                }
+                    break;
+                default:
+                    break;
             }
-
             return new BigDecimal(data).multiply(multiplier);
         } catch (NumberFormatException ignored) {
         }
@@ -120,9 +119,15 @@ public class Utils {
 
     public static String getURLParameters(Map<String, String> params) {
         return params.entrySet().stream().map(entry -> {
-            String key = URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8);
-            String value = URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8);
-            return key + "=" + value;
+            try {
+                String key = URLEncoder.encode(entry.getKey(), "UTF-8");
+                String value = URLEncoder.encode(entry.getValue(), "UTF-8");
+                return key + "=" + value;
+            } catch (UnsupportedEncodingException e) {
+                // Handle the exception or rethrow it as a RuntimeException
+                throw new RuntimeException("UTF-8 encoding not supported", e);
+            }
         }).collect(Collectors.joining("&"));
     }
+
 }

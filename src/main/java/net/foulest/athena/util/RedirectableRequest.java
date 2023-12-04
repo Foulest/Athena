@@ -52,15 +52,17 @@ public class RedirectableRequest {
                 connection.setInstanceFollowRedirects(true);
 
                 switch (connection.getResponseCode()) {
-                    case HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP -> {
+                    case HttpURLConnection.HTTP_MOVED_PERM:
+                    case HttpURLConnection.HTTP_MOVED_TEMP:
                         redirectCount++;
                         String location = connection.getHeaderField("Location");
                         currentRequest = new URL(request, location);
-                    }
+                        break;
 
-                    default -> hasResponse = true;
+                    default:
+                        hasResponse = true;
+                        break;
                 }
-
             } catch (FileNotFoundException ex) {
                 System.out.println(Ansi.colorize("Stock name is invalid.", Attribute.RED_TEXT()));
             }

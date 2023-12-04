@@ -212,11 +212,11 @@ public class Athena {
 
             System.out.println();
 
-            printColoredStockValue("Market Cap", stock.getMarketCap(), List.of(
+            printColoredStockValue("Market Cap", stock.getMarketCap(), Collections.singletonList(
                     new ColorCondition(stock.getMarketCap() > 0.0, Attribute.GREEN_TEXT(), Attribute.BOLD())
             ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Enterprise Value", stock.getEnterpriseValue(), List.of(
+            printColoredStockValue("Enterprise Value", stock.getEnterpriseValue(), Collections.singletonList(
                     new ColorCondition(stock.getEnterpriseValue() > 0.0, Attribute.GREEN_TEXT(), Attribute.BOLD())
             ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
@@ -243,42 +243,42 @@ public class Athena {
                     new ColorCondition(stock.getAnalystScore() >= 3.5, Attribute.BOLD(), Attribute.RED_TEXT())
             ), analystScoreFormatter, Attribute.CLEAR());
 
-            printColoredStockValue("Total Cash Per Share", stock.getTotalCashPerShare(), List.of(
-                    new ColorCondition(stock.getTotalCashPerShare() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatDouble(v), Attribute.RED_TEXT());
+            printColoredStockValue("Total Cash Per Share", stock.getTotalCashPerShare(),
+                    Collections.singletonList(new ColorCondition(stock.getTotalCashPerShare() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatDouble(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Revenue Per Share", stock.getRevenuePerShare(), List.of(
-                    new ColorCondition(stock.getRevenuePerShare() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatDouble(v), Attribute.RED_TEXT());
+            printColoredStockValue("Revenue Per Share", stock.getRevenuePerShare(),
+                    Collections.singletonList(new ColorCondition(stock.getRevenuePerShare() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatDouble(v), Attribute.RED_TEXT());
 
             System.out.println();
 
-            printColoredStockValue("Free Cashflow", stock.getFreeCashflow(), List.of(
-                    new ColorCondition(stock.getFreeCashflow() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("Free Cashflow", stock.getFreeCashflow(),
+                    Collections.singletonList(new ColorCondition(stock.getFreeCashflow() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Operating Cashflow", stock.getOperatingCashflow(), List.of(
-                    new ColorCondition(stock.getOperatingCashflow() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("Operating Cashflow", stock.getOperatingCashflow(),
+                    Collections.singletonList(new ColorCondition(stock.getOperatingCashflow() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Total Cash", stock.getTotalCash(), List.of(
-                    new ColorCondition(stock.getTotalCash() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("Total Cash", stock.getTotalCash(),
+                    Collections.singletonList(new ColorCondition(stock.getTotalCash() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Total Debt", stock.getTotalDebt(), Collections.emptyList()
-                    , v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("Total Debt", stock.getTotalDebt(), Collections.emptyList(),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Total Revenue", stock.getTotalRevenue(), List.of(
-                    new ColorCondition(stock.getTotalRevenue() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("Total Revenue", stock.getTotalRevenue(),
+                    Collections.singletonList(new ColorCondition(stock.getTotalRevenue() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("Gross Profits", stock.getGrossProfits(), List.of(
-                    new ColorCondition(stock.getGrossProfits() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("Gross Profits", stock.getGrossProfits(),
+                    Collections.singletonList(new ColorCondition(stock.getGrossProfits() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
-            printColoredStockValue("EBITDA", stock.getEbitda(), List.of(
-                    new ColorCondition(stock.getEbitda() > 0.0, Attribute.GREEN_TEXT())
-            ), v -> "$" + formatInteger(v), Attribute.RED_TEXT());
+            printColoredStockValue("EBITDA", stock.getEbitda(),
+                    Collections.singletonList(new ColorCondition(stock.getEbitda() > 0.0, Attribute.GREEN_TEXT())),
+                    v -> "$" + formatInteger(v), Attribute.RED_TEXT());
 
             System.out.println();
 

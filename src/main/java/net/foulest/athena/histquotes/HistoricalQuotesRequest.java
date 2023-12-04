@@ -1,9 +1,11 @@
 package net.foulest.athena.histquotes;
 
+import lombok.AllArgsConstructor;
 import net.foulest.athena.util.RedirectableRequest;
 import net.foulest.athena.util.Utils;
 
 import java.io.BufferedReader;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -12,7 +14,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-public record HistoricalQuotesRequest(String symbol, Calendar from, Calendar to, QueryInterval interval) {
+@AllArgsConstructor
+public class HistoricalQuotesRequest {
 
     public static final Calendar DEFAULT_FROM = Calendar.getInstance();
     public static final Calendar DEFAULT_TO = Calendar.getInstance();
@@ -20,6 +23,11 @@ public record HistoricalQuotesRequest(String symbol, Calendar from, Calendar to,
     static {
         DEFAULT_FROM.add(Calendar.YEAR, -1);
     }
+
+    public final String symbol;
+    public final Calendar from;
+    public final Calendar to;
+    public final QueryInterval interval;
 
     public List<HistoricalQuote> getResult() throws IOException {
         if (from.after(to)) {
@@ -32,7 +40,7 @@ public record HistoricalQuotesRequest(String symbol, Calendar from, Calendar to,
         params.put("interval", interval.getTag());
 
         String urlBuilder = "https://query1.finance.yahoo.com/v7/finance/download/"
-                + URLEncoder.encode(symbol, StandardCharsets.UTF_8) + "?" + Utils.getURLParameters(params);
+                + URLEncoder.encode(symbol, "UTF-8") + "?" + Utils.getURLParameters(params);
 
         URL request = new URL(urlBuilder);
         RedirectableRequest redirectableRequest = new RedirectableRequest(request, 5);
@@ -40,7 +48,6 @@ public record HistoricalQuotesRequest(String symbol, Calendar from, Calendar to,
         redirectableRequest.setReadTimeout(10000);
 
         URLConnection connection = redirectableRequest.openConnection();
-
         try (InputStreamReader is = new InputStreamReader(connection.getInputStream());
              BufferedReader br = new BufferedReader(is)) {
 
@@ -51,6 +58,7 @@ public record HistoricalQuotesRequest(String symbol, Calendar from, Calendar to,
                 HistoricalQuote quote = parseCSVLine(line);
                 result.add(quote);
             }
+
             return result;
         }
     }
