@@ -5,13 +5,11 @@ import net.foulest.athena.util.RedirectableRequest;
 import net.foulest.athena.util.Utils;
 
 import java.io.BufferedReader;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @AllArgsConstructor
@@ -48,6 +46,7 @@ public class HistoricalQuotesRequest {
         redirectableRequest.setReadTimeout(10000);
 
         URLConnection connection = redirectableRequest.openConnection();
+
         try (InputStreamReader is = new InputStreamReader(connection.getInputStream());
              BufferedReader br = new BufferedReader(is)) {
 
@@ -58,7 +57,6 @@ public class HistoricalQuotesRequest {
                 HistoricalQuote quote = parseCSVLine(line);
                 result.add(quote);
             }
-
             return result;
         }
     }
