@@ -26,8 +26,8 @@ dependencies {
     provided group: 'org.apache.commons', name: 'commons-csv', version: '1.10.0'
     provided group: 'com.diogonunes', name: 'JColor', version: '5.0.1'
     provided group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
-    implementation group: 'org.projectlombok', name: 'lombok', version: '1.18.26'
-    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.26'
+    implementation group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
+    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
 }
 
 jar {
