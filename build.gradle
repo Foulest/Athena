@@ -33,7 +33,7 @@ dependencies {
 
     // Apache Commons CSV - for reading CSV files
     // https://commons.apache.org/proper/commons-csv
-    provided group: 'org.apache.commons', name: 'commons-csv', version: '1.10.0'
+    provided group: 'org.apache.commons', name: 'commons-csv', version: '1.11.0'
 
     // JColor - for ANSI color codes
     // https://github.com/dialex/JColor
