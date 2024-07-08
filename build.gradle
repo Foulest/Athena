@@ -29,7 +29,7 @@ configurations {
 dependencies {
     // Jackson Core - for JSON parsing
     // https://github.com/FasterXML/jackson-core
-    provided group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.17.1'
+    provided group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.17.2'
 
     // Apache Commons CSV - for reading CSV files
     // https://commons.apache.org/proper/commons-csv
